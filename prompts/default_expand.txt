@@ -1,0 +1,10 @@
+请基于以下上下文进行续写或扩写，保持文风一致：
+
+[近期摘要]
+{{recentSummary}}
+
+[角色设定]
+{{characters}}
+
+[当前片段]
+{{selectedText}}
