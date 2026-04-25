@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
+    QFrame,
     QSplitter,
     QStatusBar,
     QTabWidget,
@@ -170,6 +171,7 @@ class NovelAssistantWindow(QMainWindow):
         self.chapter_summaries: List[str] = []
 
         self._build_ui()
+        self._apply_visual_theme()
         self._build_menu()
         self.open_workspace(initial=True)
 
@@ -201,6 +203,19 @@ class NovelAssistantWindow(QMainWindow):
 
         right = QWidget()
         rv = QVBoxLayout(right)
+        stats_frame = QFrame()
+        stats_frame.setObjectName("statsPanel")
+        stats_layout = QVBoxLayout(stats_frame)
+        stats_layout.setContentsMargins(12, 12, 12, 12)
+        stats_layout.setSpacing(6)
+        stats_layout.addWidget(QLabel("写作驾驶舱"))
+        self.stat_words = QLabel("字数：0")
+        self.stat_paragraphs = QLabel("段落：0")
+        self.stat_read = QLabel("阅读时长：1 分钟")
+        self.stat_drafts = QLabel("草案数量：0")
+        for label in [self.stat_words, self.stat_paragraphs, self.stat_read, self.stat_drafts]:
+            stats_layout.addWidget(label)
+
         self.draft_list = QListWidget()
         self.cards_tab = QTabWidget()
         self.card_view = QPlainTextEdit()
@@ -211,6 +226,7 @@ class NovelAssistantWindow(QMainWindow):
         adopt_btn.clicked.connect(self.adopt_selected_draft)
         discard_btn.clicked.connect(self.discard_selected_draft)
 
+        rv.addWidget(stats_frame)
         rv.addWidget(QLabel("AI 草案区"))
         rv.addWidget(self.draft_list)
         rv.addWidget(adopt_btn)
@@ -224,6 +240,53 @@ class NovelAssistantWindow(QMainWindow):
         status = QStatusBar()
         self.setStatusBar(status)
         self.update_status()
+
+    def _apply_visual_theme(self):
+        self.setStyleSheet(
+            """
+            QMainWindow {
+                background-color: #f5f7fb;
+            }
+            QTreeWidget, QTextEdit, QTextBrowser, QListWidget, QPlainTextEdit {
+                background: #ffffff;
+                border: 1px solid #d8deea;
+                border-radius: 8px;
+                padding: 6px;
+                selection-background-color: #cfe5ff;
+            }
+            QPushButton {
+                background-color: #2f6feb;
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #1f5bd1;
+            }
+            QPushButton:pressed {
+                background-color: #184bad;
+            }
+            QTabWidget::pane {
+                border: 1px solid #d8deea;
+                border-radius: 8px;
+                background: #ffffff;
+            }
+            #statsPanel {
+                background: #ffffff;
+                border: 1px solid #d8deea;
+                border-radius: 10px;
+            }
+            QMenuBar {
+                background-color: #eaf1fe;
+            }
+            QStatusBar {
+                background: #eaf1fe;
+                border-top: 1px solid #cdd9ef;
+            }
+            """
+        )
 
     def _build_menu(self):
         menu = self.menuBar()
@@ -403,6 +466,7 @@ class NovelAssistantWindow(QMainWindow):
         self.drafts.append(DraftItem(title, content))
         item = QListWidgetItem(f"{title} | {datetime.now().strftime('%H:%M:%S')}")
         self.draft_list.addItem(item)
+        self.update_status()
 
     def adopt_selected_draft(self):
         idx = self.draft_list.currentRow()
@@ -423,6 +487,7 @@ class NovelAssistantWindow(QMainWindow):
             return
         self.drafts.pop(idx)
         self.draft_list.takeItem(idx)
+        self.update_status()
 
     def update_status(self):
         text = self.editor.toPlainText()
@@ -432,6 +497,10 @@ class NovelAssistantWindow(QMainWindow):
         self.statusBar().showMessage(
             f"字数:{words} 段落:{paragraphs} 预计阅读:{read_min}分钟 | Ctrl+S 保存"
         )
+        self.stat_words.setText(f"字数：{words}")
+        self.stat_paragraphs.setText(f"段落：{paragraphs}")
+        self.stat_read.setText(f"阅读时长：{read_min} 分钟")
+        self.stat_drafts.setText(f"草案数量：{len(self.drafts)}")
 
     def highlight_sensitive(self, text: str):
         found = [w for w in SENSITIVE_WORDS if w in text]
