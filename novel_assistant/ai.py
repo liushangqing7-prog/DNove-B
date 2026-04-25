@@ -10,10 +10,10 @@ import requests
 
 @dataclass
 class AIConfig:
-    provider: str = "openai"
-    endpoint: str = "https://api.openai.com/v1/chat/completions"
+    provider: str = "deepseek"
+    endpoint: str = "https://api.deepseek.com/chat/completions"
     api_key: str = ""
-    model: str = "gpt-4o-mini"
+    model: str = "deepseek-chat"
     temperature: float = 0.8
     monthly_budget: float = 20.0
 
@@ -22,6 +22,21 @@ MODEL_PRICING = {
     "gpt-4o-mini": {"input": 0.15 / 1_000_000, "output": 0.60 / 1_000_000},
     "deepseek-chat": {"input": 0.27 / 1_000_000, "output": 1.10 / 1_000_000},
     "qwen-plus": {"input": 0.4 / 1_000_000, "output": 1.2 / 1_000_000},
+}
+
+PROVIDER_PRESETS = {
+    "deepseek": {
+        "endpoint": "https://api.deepseek.com/chat/completions",
+        "model": "deepseek-chat",
+    },
+    "openai": {
+        "endpoint": "https://api.openai.com/v1/chat/completions",
+        "model": "gpt-4o-mini",
+    },
+    "qwen": {
+        "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "model": "qwen-plus",
+    },
 }
 
 
@@ -34,7 +49,9 @@ class AIClient:
         if not self.config_path.exists():
             return AIConfig()
         raw = json.loads(self.config_path.read_text(encoding="utf-8"))
-        return AIConfig(**{**AIConfig().__dict__, **raw})
+        cfg = AIConfig(**{**AIConfig().__dict__, **raw})
+        self.apply_provider_preset(cfg, force=False)
+        return cfg
 
     def save_config(self) -> None:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,6 +66,24 @@ class AIClient:
             {"role": "user", "content": user_prompt},
         ]
 
+    def apply_provider_preset(self, cfg: AIConfig, force: bool = True) -> None:
+        provider = cfg.provider.strip().lower()
+        preset = PROVIDER_PRESETS.get(provider)
+        if not preset:
+            return
+        if force or not cfg.endpoint:
+            cfg.endpoint = preset["endpoint"]
+        if force or not cfg.model:
+            cfg.model = preset["model"]
+
+    @staticmethod
+    def extract_content(response: Dict) -> str:
+        choices = response.get("choices", [])
+        if not choices:
+            return ""
+        message = choices[0].get("message", {})
+        return message.get("content", "")
+
     def completion(self, system_prompt: str, user_prompt: str, stream: bool = False):
         headers = {
             "Authorization": f"Bearer {self.config.api_key}",
@@ -62,7 +97,7 @@ class AIClient:
         }
         if stream:
             return self._stream_request(headers, payload)
-        r = requests.post(self.config.endpoint, headers=headers, json=payload, timeout=120)
+        r = requests.post(self.config.endpoint, headers=headers, json=payload, timeout=(15, 120))
         r.raise_for_status()
         return r.json()
 

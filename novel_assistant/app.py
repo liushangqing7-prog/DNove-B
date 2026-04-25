@@ -39,7 +39,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .ai import AIClient, load_prompt_template
+from .ai import AIClient, PROVIDER_PRESETS, load_prompt_template
 from .cards import CardRepository
 from .storage import WorkspaceStorage
 
@@ -83,7 +83,7 @@ class OneSentenceDialog(QDialog):
         )
         try:
             r = self.ai_client.completion(system, user, stream=False)
-            text = r["choices"][0]["message"]["content"]
+            text = self.ai_client.extract_content(r)
             self.output_edit.setPlainText(text)
         except Exception as e:
             self.output_edit.setPlainText(f"生成失败：{e}")
@@ -114,9 +114,27 @@ class SettingsDialog(QDialog):
         form.addRow("Model", self.model)
         form.addRow("Temperature", self.temp)
         form.addRow("Monthly Budget", self.budget)
+        preset_row = QWidget()
+        preset_layout = QHBoxLayout(preset_row)
+        preset_layout.setContentsMargins(0, 0, 0, 0)
+        deepseek_btn = QPushButton("DeepSeek 推荐配置")
+        openai_btn = QPushButton("OpenAI 推荐配置")
+        deepseek_btn.clicked.connect(lambda: self.apply_preset("deepseek"))
+        openai_btn.clicked.connect(lambda: self.apply_preset("openai"))
+        preset_layout.addWidget(deepseek_btn)
+        preset_layout.addWidget(openai_btn)
+        form.addRow("快速配置", preset_row)
         save_btn = QPushButton("保存")
         save_btn.clicked.connect(self.save)
         form.addRow(save_btn)
+
+    def apply_preset(self, provider: str):
+        preset = PROVIDER_PRESETS.get(provider)
+        if not preset:
+            return
+        self.provider.setText(provider)
+        self.endpoint.setText(preset["endpoint"])
+        self.model.setText(preset["model"])
 
     def save(self):
         c = self.ai_client.config
@@ -124,8 +142,13 @@ class SettingsDialog(QDialog):
         c.endpoint = self.endpoint.text().strip()
         c.api_key = self.api_key.text().strip()
         c.model = self.model.text().strip()
-        c.temperature = float(self.temp.text().strip() or 0.8)
-        c.monthly_budget = float(self.budget.text().strip() or 20.0)
+        try:
+            c.temperature = float(self.temp.text().strip() or 0.8)
+            c.monthly_budget = float(self.budget.text().strip() or 20.0)
+        except ValueError:
+            QMessageBox.warning(self, "参数错误", "Temperature 或 Monthly Budget 格式不正确")
+            return
+        self.ai_client.apply_provider_preset(c, force=False)
         self.ai_client.save_config()
         self.accept()
 
@@ -412,7 +435,7 @@ class NovelAssistantWindow(QMainWindow):
             return
         try:
             r = self.ai_client.completion("你是设定补全助手", f"根据文本补充设定：{selected}", stream=False)
-            content = r["choices"][0]["message"]["content"]
+            content = self.ai_client.extract_content(r)
             self.push_draft("设定提案", content)
         except Exception as e:
             QMessageBox.warning(self, "AI 错误", str(e))
@@ -450,7 +473,7 @@ class NovelAssistantWindow(QMainWindow):
         prefix = f"最近摘要:\n{recent}\n\n当前开头:\n{self.editor.toPlainText()[:500]}"
         try:
             full = self.ai_client.completion("你是长篇小说续写助手", prefix + "\n\n" + prompt, stream=False)
-            content = full["choices"][0]["message"]["content"]
+            content = self.ai_client.extract_content(full)
             self.push_draft("续写分支1", content)
             self.push_draft("续写分支2", content + "\n\n（分支2建议）")
             self.push_draft("续写分支3", content + "\n\n（分支3建议）")
